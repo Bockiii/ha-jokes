@@ -10,7 +10,7 @@
  * Version is kept in lockstep with the integration's manifest.json.
  */
 
-const CARD_VERSION = "1.4.1";
+const CARD_VERSION = "1.4.2";
 
 console.info(
   `%c HA-JOKES-CARD %c v${CARD_VERSION} `,
@@ -208,15 +208,48 @@ class HaJokesCard extends HTMLElement {
   }
 }
 
-customElements.define("ha-jokes-card", HaJokesCard);
+function registerCard() {
+  // Always read window.customElements fresh — see waitForHaRegistry below.
+  if (!window.customElements.get("ha-jokes-card")) {
+    window.customElements.define("ha-jokes-card", HaJokesCard);
+  }
+  // Only advertise the card once the element really is defined. Publishing this entry
+  // while the element is missing is what makes the picker spin forever.
+  window.customCards = window.customCards || [];
+  if (!window.customCards.some((card) => card.type === "ha-jokes-card")) {
+    window.customCards.push({
+      type: "ha-jokes-card",
+      name: "Jokes Card",
+      description: "Shows the current joke with Explain and New joke actions.",
+      // Must be true: HA's card picker maps this to `showElement`, and with false it renders
+      // a bare description placeholder instead of a live preview of the card.
+      preview: true,
+      documentationURL: "https://github.com/loryanstrant/ha-jokes",
+    });
+  }
+}
 
-window.customCards = window.customCards || [];
-window.customCards.push({
-  type: "ha-jokes-card",
-  name: "Jokes Card",
-  description: "Shows the current joke with Explain and New joke actions.",
-  // Must be true: HA's card picker maps this to `showElement`, and with false it renders
-  // a bare description placeholder instead of a live preview of the card.
-  preview: true,
-  documentationURL: "https://github.com/loryanstrant/ha-jokes",
-});
+// Home Assistant replaces window.customElements with a scoped-registry polyfill while its
+// core bundle boots. The integration injects this file via add_extra_js_url as a bare
+// import(), which races that boot: if we win, `define` lands in the *native* registry, HA
+// then swaps in its own, and the definition is lost. window.customCards survives (it is a
+// plain window property), so the picker lists the card, awaits whenDefined() on a registry
+// that will never have it, and renders a spinner forever.
+//
+// So: wait until HA's own elements are visible in the CURRENT registry before registering.
+// window.customElements must be re-read every tick — it is a different object before and
+// after the swap — which is also why we must not call customElements.whenDefined() at module
+// top level: that would bind to the native registry's method and might never fire.
+const HA_REGISTRY_TIMEOUT_MS = 10000;
+const registrationStartedAt = Date.now();
+
+(function waitForHaRegistry() {
+  if (
+    window.customElements.get("home-assistant") ||
+    Date.now() - registrationStartedAt > HA_REGISTRY_TIMEOUT_MS
+  ) {
+    registerCard();
+    return;
+  }
+  setTimeout(waitForHaRegistry, 50);
+})();
