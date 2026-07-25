@@ -10,7 +10,7 @@
  * Version is kept in lockstep with the integration's manifest.json.
  */
 
-const CARD_VERSION = "1.4.0";
+const CARD_VERSION = "1.4.1";
 
 console.info(
   `%c HA-JOKES-CARD %c v${CARD_VERSION} `,
@@ -62,48 +62,51 @@ class HaJokesCard extends HTMLElement {
   _build() {
     const card = document.createElement("ha-card");
 
+    // This <style> lives in ha-card's light DOM, so it registers as a *document*
+    // stylesheet — every selector must be scoped to `ha-jokes-card` or generic class
+    // names like .title/.hidden leak out and restyle the rest of the HA frontend.
     const style = document.createElement("style");
     style.textContent = `
-      .wrap { padding: 16px; }
-      .title {
+      ha-jokes-card .wrap { padding: 16px; }
+      ha-jokes-card .title {
         font-size: 1.25rem; font-weight: 600; margin: 0 0 12px 0;
         color: var(--primary-text-color); display: flex; align-items: center; gap: 8px;
       }
-      .joke {
+      ha-jokes-card .joke {
         font-size: 1.05rem; line-height: 1.5; color: var(--primary-text-color);
         border-left: 4px solid var(--primary-color, #03a9f4);
         padding: 4px 0 4px 14px; margin: 0;
       }
-      .empty { color: var(--secondary-text-color); font-style: italic; }
-      .meta {
+      ha-jokes-card .empty { color: var(--secondary-text-color); font-style: italic; }
+      ha-jokes-card .meta {
         margin-top: 10px; font-size: 0.8rem; color: var(--secondary-text-color);
         display: flex; gap: 12px; flex-wrap: wrap;
       }
-      .buttons { display: flex; gap: 8px; margin-top: 14px; }
-      .btn {
+      ha-jokes-card .buttons { display: flex; gap: 8px; margin-top: 14px; }
+      ha-jokes-card .btn {
         flex: 1; cursor: pointer; border: none; border-radius: 12px;
         padding: 10px 8px; font-size: 0.9rem; font-weight: 500;
         display: flex; align-items: center; justify-content: center; gap: 6px;
         background: var(--primary-color, #03a9f4); color: var(--text-primary-color, #fff);
       }
-      .btn.secondary {
+      ha-jokes-card .btn.secondary {
         background: var(--secondary-background-color, #e0e0e0);
         color: var(--primary-text-color);
       }
-      .btn:active { opacity: 0.85; }
-      .btn ha-icon { --mdc-icon-size: 20px; }
-      .explanation {
+      ha-jokes-card .btn:active { opacity: 0.85; }
+      ha-jokes-card .btn ha-icon { --mdc-icon-size: 20px; }
+      ha-jokes-card .explanation {
         margin-top: 14px; padding: 12px 14px; border-radius: 12px;
         background: var(--secondary-background-color, rgba(0,0,0,0.05));
       }
-      .explanation .eh {
+      ha-jokes-card .explanation .eh {
         font-weight: 600; font-size: 0.9rem; margin-bottom: 6px;
         color: var(--primary-text-color); display: flex; align-items: center; gap: 6px;
       }
-      .explanation .et {
+      ha-jokes-card .explanation .et {
         font-size: 0.95rem; line-height: 1.45; color: var(--primary-text-color);
       }
-      .hidden { display: none; }
+      ha-jokes-card .hidden { display: none; }
     `;
 
     const wrap = document.createElement("div");
@@ -212,6 +215,8 @@ window.customCards.push({
   type: "ha-jokes-card",
   name: "Jokes Card",
   description: "Shows the current joke with Explain and New joke actions.",
-  preview: false,
+  // Must be true: HA's card picker maps this to `showElement`, and with false it renders
+  // a bare description placeholder instead of a live preview of the card.
+  preview: true,
   documentationURL: "https://github.com/loryanstrant/ha-jokes",
 });
