@@ -313,6 +313,11 @@ a **New joke** button (fetches a fresh joke on demand), and a conditional explan
 panel that appears once an explanation has been generated. It uses your active theme's
 colours, so it looks right in both light and dark mode.
 
+The AI writes its explanation in Markdown, and the card renders it properly — **bold**
+emphasis, paragraphs, and numbered/bulleted lists — using Home Assistant's own Markdown
+renderer, so it matches the styling of the core Markdown card. Two-part jokes keep the line
+break between setup and punchline.
+
 <img alt="custom:ha-jokes-card showing a joke, its source, Explain it and New joke buttons, and an explanation panel" src="images/card.png" width="420" />
 
 ```yaml
