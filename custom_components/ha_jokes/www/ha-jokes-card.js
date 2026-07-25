@@ -3,15 +3,16 @@
  *
  * Displays the current joke, its source, an "Explain it" button (AI explanation
  * via the ha_jokes.explain_joke service), a "New joke" button (forces a refresh),
- * and a conditional explanation panel (rendered as Markdown via HA's own <ha-markdown>).
- * Dependency-free vanilla web component — no
- * build step. Bundled with the integration and auto-registered as a frontend
- * resource, so it needs no manual "add resource" step.
+ * and a conditional explanation panel (rendered as Markdown via HA's own <ha-markdown>),
+ * which can sit below or beside the joke. Ships a visual editor built on <ha-form>.
+ *
+ * Dependency-free vanilla web component — no build step. Bundled with the integration and
+ * auto-registered as a frontend resource, so it needs no manual "add resource" step.
  *
  * Version is kept in lockstep with the integration's manifest.json.
  */
 
-const CARD_VERSION = "1.5.0";
+const CARD_VERSION = "1.6.0";
 
 console.info(
   `%c HA-JOKES-CARD %c v${CARD_VERSION} `,
@@ -24,6 +25,10 @@ class HaJokesCard extends HTMLElement {
     return { entity: "sensor.joke" };
   }
 
+  static getConfigElement() {
+    return document.createElement("ha-jokes-card-editor");
+  }
+
   setConfig(config) {
     this._config = {
       entity: "sensor.joke",
@@ -31,6 +36,13 @@ class HaJokesCard extends HTMLElement {
       title: "Joke of the Moment",
       show_buttons: true,
       show_source: true,
+      // "below" stacks the explanation under the joke; "side" puts it alongside and
+      // falls back to stacking on narrow cards (see the flex-wrap rule).
+      explanation_position: "below",
+      // Optional sizing, both in px. height is a *minimum* so the card does not jump
+      // as the explanation appears and disappears; width caps how wide it grows.
+      height: 0,
+      width: 0,
       ...(config || {}),
     };
     // Rebuild the DOM on (re)config.
@@ -81,6 +93,15 @@ class HaJokesCard extends HTMLElement {
         white-space: pre-line;
       }
       ha-jokes-card .empty { color: var(--secondary-text-color); font-style: italic; }
+      /* Layout container. "below" stacks; "side" sits the explanation next to the joke
+         but wraps back to stacked once the card is too narrow for two columns. */
+      ha-jokes-card .body { display: flex; gap: 14px; }
+      ha-jokes-card .body.below { flex-direction: column; }
+      ha-jokes-card .body.side { flex-direction: row; flex-wrap: wrap; align-items: flex-start; }
+      ha-jokes-card .body.side > .main,
+      ha-jokes-card .body.side > .explanation { flex: 1 1 260px; min-width: 0; }
+      /* .explanation owns its top margin when stacked; the flex gap handles it otherwise. */
+      ha-jokes-card .body.side > .explanation { margin-top: 0; }
       ha-jokes-card .meta {
         margin-top: 10px; font-size: 0.8rem; color: var(--secondary-text-color);
         display: flex; gap: 12px; flex-wrap: wrap;
@@ -123,18 +144,22 @@ class HaJokesCard extends HTMLElement {
     wrap.className = "wrap";
     wrap.innerHTML = `
       <div class="title"><ha-icon icon="mdi:emoticon-happy-outline"></ha-icon><span class="title-text"></span></div>
-      <p class="joke"></p>
-      <div class="meta">
-        <span class="src hidden"></span>
-        <span class="upd"></span>
-      </div>
-      <div class="buttons hidden">
-        <button class="btn explain" type="button"><ha-icon icon="mdi:lightbulb-question-outline"></ha-icon>Explain it</button>
-        <button class="btn secondary newjoke" type="button"><ha-icon icon="mdi:dice-multiple-outline"></ha-icon>New joke</button>
-      </div>
-      <div class="explanation hidden">
-        <div class="eh"><ha-icon icon="mdi:lightbulb-on-outline"></ha-icon>Explanation</div>
-        <div class="et et-plain"></div>
+      <div class="body">
+        <div class="main">
+          <p class="joke"></p>
+          <div class="meta">
+            <span class="src hidden"></span>
+            <span class="upd"></span>
+          </div>
+          <div class="buttons hidden">
+            <button class="btn explain" type="button"><ha-icon icon="mdi:lightbulb-question-outline"></ha-icon>Explain it</button>
+            <button class="btn secondary newjoke" type="button"><ha-icon icon="mdi:dice-multiple-outline"></ha-icon>New joke</button>
+          </div>
+        </div>
+        <div class="explanation hidden">
+          <div class="eh"><ha-icon icon="mdi:lightbulb-on-outline"></ha-icon>Explanation</div>
+          <div class="et et-plain"></div>
+        </div>
       </div>
     `;
 
@@ -145,6 +170,8 @@ class HaJokesCard extends HTMLElement {
 
     // Cache references.
     this._els = {
+      card,
+      body: wrap.querySelector(".body"),
       titleText: wrap.querySelector(".title-text"),
       joke: wrap.querySelector(".joke"),
       meta: wrap.querySelector(".meta"),
@@ -197,6 +224,13 @@ class HaJokesCard extends HTMLElement {
 
     els.titleText.textContent = cfg.title;
 
+    // Layout + optional sizing.
+    const side = cfg.explanation_position === "side";
+    els.body.classList.toggle("side", side);
+    els.body.classList.toggle("below", !side);
+    els.card.style.minHeight = cfg.height > 0 ? `${cfg.height}px` : "";
+    els.card.style.maxWidth = cfg.width > 0 ? `${cfg.width}px` : "";
+
     const rawJoke = st && st.attributes ? st.attributes.joke : "";
     // Normalise CRLF and collapse blank lines so a setup/punchline pair sits on two
     // consecutive lines rather than being split by a big gap (see .joke pre-line).
@@ -226,10 +260,18 @@ class HaJokesCard extends HTMLElement {
     // Buttons.
     els.buttons.classList.toggle("hidden", !cfg.show_buttons);
 
-    // Explanation panel — shown when the explanation entity reports "Explained".
+    // Explanation panel — shown when the explanation entity reports "Explained" AND the
+    // explanation still belongs to the joke on screen. The integration clears it when the
+    // joke rotates, but this guard also covers the brief window before that state lands,
+    // and older integration versions that never reported joke_id at all.
     const exp = this._hass.states[cfg.explanation_entity];
     const explained = exp && exp.state === "Explained";
-    if (explained && exp.attributes && exp.attributes.explanation) {
+    const explainedFor = exp && exp.attributes ? exp.attributes.joke_id : undefined;
+    const currentJokeId = st && st.attributes ? st.attributes.joke_id : undefined;
+    // Only compare when both sides actually reported an id — providers such as Geek Jokes
+    // and Yo Mama send none, and an absent id must not hide a valid explanation.
+    const stale = !!explainedFor && !!currentJokeId && explainedFor !== currentJokeId;
+    if (explained && !stale && exp.attributes && exp.attributes.explanation) {
       const text = exp.attributes.explanation;
       if (els.explanationMarkdown) {
         els.explanationMarkdown.content = text;
@@ -243,10 +285,99 @@ class HaJokesCard extends HTMLElement {
   }
 }
 
+const EDITOR_SCHEMA = [
+  { name: "entity", selector: { entity: { domain: "sensor" } } },
+  { name: "explanation_entity", selector: { entity: { domain: "sensor" } } },
+  { name: "title", selector: { text: {} } },
+  {
+    name: "explanation_position",
+    selector: {
+      select: {
+        mode: "dropdown",
+        options: [
+          { value: "below", label: "Below the joke" },
+          { value: "side", label: "Beside the joke" },
+        ],
+      },
+    },
+  },
+  {
+    name: "height",
+    selector: {
+      number: { min: 0, max: 1200, step: 10, mode: "box", unit_of_measurement: "px" },
+    },
+  },
+  {
+    name: "width",
+    selector: {
+      number: { min: 0, max: 2000, step: 10, mode: "box", unit_of_measurement: "px" },
+    },
+  },
+  { name: "show_source", selector: { boolean: {} } },
+  { name: "show_buttons", selector: { boolean: {} } },
+];
+
+// ha-form renders the raw key name when it cannot find a label, so these are required.
+const EDITOR_LABELS = {
+  entity: "Joke entity",
+  explanation_entity: "Explanation entity",
+  title: "Card heading",
+  explanation_position: "Explanation position",
+  height: "Minimum height (0 = automatic)",
+  width: "Maximum width (0 = full width)",
+  show_source: "Show the joke source and age",
+  show_buttons: "Show the Explain it / New joke buttons",
+};
+
+class HaJokesCardEditor extends HTMLElement {
+  setConfig(config) {
+    this._config = config || {};
+    this._render();
+  }
+
+  set hass(hass) {
+    this._hass = hass;
+    this._render();
+  }
+
+  _render() {
+    // ha-form needs hass to resolve its selectors, so wait for it.
+    if (!this._hass || !this._config) return;
+
+    if (!this._form) {
+      const form = document.createElement("ha-form");
+      form.computeLabel = (schema) => EDITOR_LABELS[schema.name] || schema.name;
+      form.addEventListener("value-changed", (ev) => {
+        // Stop the inner event so only our config-changed reaches the editor host.
+        ev.stopPropagation();
+        this.dispatchEvent(
+          new CustomEvent("config-changed", {
+            // ha-form hands back the whole object, untouched keys (including `type`)
+            // included, so it can be forwarded as the new config as-is.
+            detail: { config: ev.detail.value },
+            bubbles: true,
+            composed: true,
+          })
+        );
+      });
+      this.appendChild(form);
+      this._form = form;
+    }
+
+    this._form.hass = this._hass;
+    this._form.schema = EDITOR_SCHEMA;
+    this._form.data = this._config;
+  }
+}
+
 function registerCard() {
   // Always read window.customElements fresh — see waitForHaRegistry below.
   if (!window.customElements.get("ha-jokes-card")) {
     window.customElements.define("ha-jokes-card", HaJokesCard);
+  }
+  // Must be registered in the same registry as the card, for the same reason.
+  if (!window.customElements.get("ha-jokes-card-editor")) {
+    window.customElements.define("ha-jokes-card-editor", HaJokesCardEditor);
   }
   // Only advertise the card once the element really is defined. Publishing this entry
   // while the element is missing is what makes the picker spin forever.
