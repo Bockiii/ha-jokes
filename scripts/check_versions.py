@@ -51,6 +51,30 @@ if not re.search(r"preview:\s*true", card_text):
         "otherwise the card renders no preview in HA's card picker"
     )
 
+# The card must not register at module top level. HA swaps window.customElements for a
+# scoped-registry polyfill while booting; a top-level `define` can land in the native
+# registry and be discarded, leaving the picker spinning on whenDefined() forever. Both the
+# define and the customCards push have to sit inside registerCard(), which only runs once
+# HA's own elements are visible in the current registry.
+if "function registerCard()" not in card_text:
+    errors.append("ha-jokes-card.js: registerCard() wrapper is missing")
+if not re.search(r"window\.customElements\.get\(\"home-assistant\"\)", card_text):
+    errors.append(
+        "ha-jokes-card.js: registration must wait for `home-assistant` in the CURRENT "
+        "registry (window.customElements.get(\"home-assistant\"))"
+    )
+for lineno, line in enumerate(card_text.splitlines(), 1):
+    # top level == column 0, i.e. not indented inside registerCard()
+    if re.match(r"^(window\.)?customElements\.define\(", line):
+        errors.append(
+            f"line {lineno}: top-level customElements.define() — must be inside registerCard()"
+        )
+    if re.match(r"^window\.customCards\.push\(", line):
+        errors.append(
+            f"line {lineno}: top-level customCards.push() — must be inside registerCard(), "
+            "after the element is actually defined"
+        )
+
 # Every rule in the card's <style> is document-scoped (the <style> sits in ha-card's light
 # DOM), so unscoped generic selectors leak into the whole HA frontend.
 style_block = re.search(r"style\.textContent = `(.*?)`;", card_text, re.S)
