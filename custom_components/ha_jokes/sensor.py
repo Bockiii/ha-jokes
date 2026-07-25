@@ -12,7 +12,7 @@ import async_timeout
 
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import (
     CoordinatorEntity,
@@ -327,6 +327,35 @@ class JokeExplanationSensor(CoordinatorEntity, SensorEntity):
         self._attr_icon = "mdi:comment-question-outline"
         self._attr_unique_id = f"{DOMAIN}_{config_entry.entry_id}_explanation"
         self._explanation = None
+        # Which joke the current explanation belongs to, so we can drop it once the
+        # joke rotates. Prefer joke_id; fall back to the joke text for providers that
+        # do not supply an id.
+        self._explained_joke_key = None
+
+    def _current_joke_key(self) -> str | None:
+        """Identify the joke the coordinator is currently serving."""
+        data = self.coordinator.data or {}
+        return data.get(ATTR_JOKE_ID) or data.get(ATTR_JOKE) or None
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Discard the explanation when it no longer matches the current joke.
+
+        Without this the sensor keeps reporting "Explained" with the previous joke's
+        explanation forever, so any dashboard showing it displays an explanation for a
+        joke that is no longer on screen.
+        """
+        if self._explanation:
+            current = self._current_joke_key()
+            # `current is not None` matters: a failed refresh leaves coordinator.data
+            # empty, and we must not wipe a perfectly good explanation because of it.
+            # A None _explained_joke_key still clears here, so messages produced when no
+            # joke was available disappear once a real joke arrives.
+            if current is not None and current != self._explained_joke_key:
+                _LOGGER.debug("Joke rotated; clearing the stale explanation")
+                self._explanation = None
+                self._explained_joke_key = None
+        super()._handle_coordinator_update()
 
     @property
     def state(self) -> str:
@@ -340,6 +369,8 @@ class JokeExplanationSensor(CoordinatorEntity, SensorEntity):
         """Return the state attributes."""
         return {
             ATTR_EXPLANATION: self._explanation or "No explanation available",
+            # Lets a dashboard (or automation) tell which joke this explanation is for.
+            ATTR_JOKE_ID: self._explained_joke_key or "",
         }
 
     async def async_explain_joke(self) -> None:
@@ -347,6 +378,7 @@ class JokeExplanationSensor(CoordinatorEntity, SensorEntity):
         _LOGGER.info("=== Starting explain_joke service ===")
         # Find the joke sensor entity dynamically
         joke = None
+        joke_key = None
         joke_entity_id = None
         
         # Search for the joke sensor entity
@@ -356,6 +388,7 @@ class JokeExplanationSensor(CoordinatorEntity, SensorEntity):
                 state = self.hass.states.get(entity_id)
                 if state and state.attributes.get(ATTR_JOKE):
                     joke = state.attributes.get(ATTR_JOKE)
+                    joke_key = state.attributes.get(ATTR_JOKE_ID) or joke
                     joke_entity_id = entity_id
                     break
             elif entity_id == "sensor.joke":
@@ -363,14 +396,20 @@ class JokeExplanationSensor(CoordinatorEntity, SensorEntity):
                 state = self.hass.states.get(entity_id)
                 if state and state.attributes.get(ATTR_JOKE):
                     joke = state.attributes.get(ATTR_JOKE)
+                    joke_key = state.attributes.get(ATTR_JOKE_ID) or joke
                     joke_entity_id = entity_id
                     break
         
         if not joke:
             _LOGGER.warning("No joke available to explain")
             self._explanation = "No joke available to explain"
+            self._explained_joke_key = None
             self.async_write_ha_state()
             return
+
+        # Tie everything we set below (explanation *or* error message) to this joke, so it
+        # is discarded as soon as the joke rotates.
+        self._explained_joke_key = joke_key
         
         # Check if ai_task service is available
         if not self.hass.services.has_service("ai_task", "generate_data"):

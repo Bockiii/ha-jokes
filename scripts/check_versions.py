@@ -63,6 +63,12 @@ if not re.search(r"window\.customElements\.get\(\"home-assistant\"\)", card_text
         "ha-jokes-card.js: registration must wait for `home-assistant` in the CURRENT "
         "registry (window.customElements.get(\"home-assistant\"))"
     )
+if 'window.customElements.define("ha-jokes-card-editor"' not in card_text:
+    errors.append(
+        "ha-jokes-card.js: the editor must be registered inside registerCard() too, or the "
+        "visual editor lands in the wrong registry and HA cannot find it"
+    )
+
 for lineno, line in enumerate(card_text.splitlines(), 1):
     # top level == column 0, i.e. not indented inside registerCard()
     if re.match(r"^(window\.)?customElements\.define\(", line):

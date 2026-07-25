@@ -320,12 +320,22 @@ break between setup and punchline.
 
 <img alt="custom:ha-jokes-card showing a joke, its source, Explain it and New joke buttons, and an explanation panel" src="images/card.png" width="420" />
 
+The card has a **visual editor** — pick it from the card picker and you get proper form
+controls for every option below, so there is no need to write YAML by hand.
+
+The explanation panel **clears itself whenever the joke changes** (the **New joke** button, a
+manual refresh, or the automatic refresh interval), so you never see an explanation for a joke
+that is no longer on screen.
+
 ```yaml
 type: custom:ha-jokes-card
 # all options below are optional — these are the defaults
 entity: sensor.joke
 explanation_entity: sensor.joke_explanation
 title: Joke of the Moment
+explanation_position: below
+height: 0
+width: 0
 show_source: true
 show_buttons: true
 ```
@@ -335,6 +345,9 @@ show_buttons: true
 | `entity` | `sensor.joke` | The joke sensor to display. |
 | `explanation_entity` | `sensor.joke_explanation` | Sensor holding the AI explanation. |
 | `title` | `Joke of the Moment` | Card heading. |
+| `explanation_position` | `below` | `below` stacks the explanation under the joke; `side` puts it alongside. `side` automatically falls back to stacking when the card is too narrow for two columns. |
+| `height` | `0` | Minimum card height in px (`0` = automatic). Useful to stop the card resizing as the explanation appears and disappears. |
+| `width` | `0` | Maximum card width in px (`0` = fill the column). |
 | `show_source` | `true` | Show the source/provider line. |
 | `show_buttons` | `true` | Show the **Explain it** / **New joke** buttons. |
 
