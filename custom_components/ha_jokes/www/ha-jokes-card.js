@@ -3,14 +3,15 @@
  *
  * Displays the current joke, its source, an "Explain it" button (AI explanation
  * via the ha_jokes.explain_joke service), a "New joke" button (forces a refresh),
- * and a conditional explanation panel. Dependency-free vanilla web component — no
+ * and a conditional explanation panel (rendered as Markdown via HA's own <ha-markdown>).
+ * Dependency-free vanilla web component — no
  * build step. Bundled with the integration and auto-registered as a frontend
  * resource, so it needs no manual "add resource" step.
  *
  * Version is kept in lockstep with the integration's manifest.json.
  */
 
-const CARD_VERSION = "1.4.2";
+const CARD_VERSION = "1.5.0";
 
 console.info(
   `%c HA-JOKES-CARD %c v${CARD_VERSION} `,
@@ -76,6 +77,8 @@ class HaJokesCard extends HTMLElement {
         font-size: 1.05rem; line-height: 1.5; color: var(--primary-text-color);
         border-left: 4px solid var(--primary-color, #03a9f4);
         padding: 4px 0 4px 14px; margin: 0;
+        /* Two-part jokes arrive with a newline between setup and punchline — keep it. */
+        white-space: pre-line;
       }
       ha-jokes-card .empty { color: var(--secondary-text-color); font-style: italic; }
       ha-jokes-card .meta {
@@ -106,6 +109,13 @@ class HaJokesCard extends HTMLElement {
       ha-jokes-card .explanation .et {
         font-size: 0.95rem; line-height: 1.45; color: var(--primary-text-color);
       }
+      /* Only the plain-text fallback keeps source newlines. Never put pre-line on
+         <ha-markdown>: it inherits into the shadow DOM and turns the whitespace between
+         marked's generated tags into visible blank lines. */
+      ha-jokes-card .explanation .et-plain { white-space: pre-line; }
+      ha-jokes-card .explanation ha-markdown { display: block; }
+      ha-jokes-card .explanation ha-markdown > *:first-child { margin-top: 0; }
+      ha-jokes-card .explanation ha-markdown > *:last-child { margin-bottom: 0; }
       ha-jokes-card .hidden { display: none; }
     `;
 
@@ -124,7 +134,7 @@ class HaJokesCard extends HTMLElement {
       </div>
       <div class="explanation hidden">
         <div class="eh"><ha-icon icon="mdi:lightbulb-on-outline"></ha-icon>Explanation</div>
-        <div class="et"></div>
+        <div class="et et-plain"></div>
       </div>
     `;
 
@@ -145,7 +155,22 @@ class HaJokesCard extends HTMLElement {
       newBtn: wrap.querySelector(".newjoke"),
       explanation: wrap.querySelector(".explanation"),
       explanationText: wrap.querySelector(".et"),
+      explanationMarkdown: null,
     };
+
+    // The AI writes the explanation in markdown (**bold**, numbered lists, nested bullets).
+    // Render it with HA's own <ha-markdown>, which sanitises and themes for us — it lives in
+    // the core frontend bundle, so by the time this card is registered it is available.
+    // Older cores without it fall back to the plain-text div, which at least keeps the
+    // paragraph breaks via .et-plain.
+    if (window.customElements.get("ha-markdown")) {
+      const md = document.createElement("ha-markdown");
+      md.setAttribute("breaks", "");
+      md.className = "et";
+      this._els.explanationText.replaceWith(md);
+      this._els.explanationText = null;
+      this._els.explanationMarkdown = md;
+    }
 
     // Wire buttons once.
     this._els.explainBtn.addEventListener("click", () => {
@@ -172,7 +197,12 @@ class HaJokesCard extends HTMLElement {
 
     els.titleText.textContent = cfg.title;
 
-    const joke = st && st.attributes ? st.attributes.joke : "";
+    const rawJoke = st && st.attributes ? st.attributes.joke : "";
+    // Normalise CRLF and collapse blank lines so a setup/punchline pair sits on two
+    // consecutive lines rather than being split by a big gap (see .joke pre-line).
+    const joke = rawJoke
+      ? String(rawJoke).replace(/\r\n?/g, "\n").replace(/\n{2,}/g, "\n").trim()
+      : "";
     if (joke) {
       els.joke.textContent = joke;
       els.joke.classList.remove("empty");
@@ -200,7 +230,12 @@ class HaJokesCard extends HTMLElement {
     const exp = this._hass.states[cfg.explanation_entity];
     const explained = exp && exp.state === "Explained";
     if (explained && exp.attributes && exp.attributes.explanation) {
-      els.explanationText.textContent = exp.attributes.explanation;
+      const text = exp.attributes.explanation;
+      if (els.explanationMarkdown) {
+        els.explanationMarkdown.content = text;
+      } else {
+        els.explanationText.textContent = text;
+      }
       els.explanation.classList.remove("hidden");
     } else {
       els.explanation.classList.add("hidden");
