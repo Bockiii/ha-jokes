@@ -79,7 +79,6 @@ class JokesDataUpdateCoordinator(DataUpdateCoordinator):
 
     def _build_provider_configs(self) -> list[dict[str, Any]]:
         """Build provider configurations."""
-        jokeapi_url = f"{API_URL_JOKEAPI}&lang={self._jokeapi_language}"
         return [
             {
                 "name": PROVIDER_ICANHAZDADJOKE,
@@ -89,7 +88,7 @@ class JokesDataUpdateCoordinator(DataUpdateCoordinator):
             },
             {
                 "name": PROVIDER_JOKEAPI,
-                "url": jokeapi_url,
+                "url": f"{API_URL_JOKEAPI}&lang={self._jokeapi_language}",
                 "headers": API_HEADERS_JOKEAPI,
                 "parser": self._parse_jokeapi,
             },
