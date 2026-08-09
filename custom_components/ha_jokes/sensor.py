@@ -314,7 +314,9 @@ class JokesSensor(CoordinatorEntity, SensorEntity):
             self._config_entry.add_update_listener(self._async_update_options)
         )
 
-    async def _async_update_options(self, config_entry: ConfigEntry) -> None:
+    async def _async_update_options(
+        self, hass: HomeAssistant, config_entry: ConfigEntry
+    ) -> None:
         """Update options."""
         refresh_interval = config_entry.options.get(
             CONF_REFRESH_INTERVAL, DEFAULT_REFRESH_INTERVAL
