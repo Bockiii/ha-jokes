@@ -91,6 +91,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         refresh_interval,
         enabled_providers,
         jokeapi_language,
+        entry,
     )
     
     # Fetch initial data - this can raise ConfigEntryNotReady

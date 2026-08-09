@@ -119,6 +119,7 @@ class JokesDataUpdateCoordinator(DataUpdateCoordinator):
         refresh_interval: int,
         enabled_providers: list[str],
         jokeapi_language: str | None = None,
+        config_entry: ConfigEntry | None = None,
     ) -> None:
         """Initialize."""
         self.platforms = []
@@ -134,6 +135,7 @@ class JokesDataUpdateCoordinator(DataUpdateCoordinator):
             _LOGGER,
             name=DOMAIN,
             update_interval=timedelta(minutes=refresh_interval),
+            config_entry=config_entry,
         )
 
     def _parse_icanhazdadjoke(self, data: dict) -> dict[str, Any]:
